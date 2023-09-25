@@ -100,6 +100,66 @@
     - Update GRUB configuration
     - Reboot host
 
+- name: Create backup of original rsyslog file
+  ansible.builtin.copy:
+    src: '/etc/rsyslog.conf'
+    dest: '/etc/rsyslog.conf.backup'
+  become: yes
+
+- name: Modify rsyslog.conf for CentOS 7 (Old style)
+  ansible.builtin.replace:
+    path: '/etc/rsyslog.conf'
+    regexp: '^#### GLOBAL DIRECTIVES ####'
+    replace: |
+      #### GLOBAL DIRECTIVES ####
+      #Dissable rate limiting
+      $SystemLogRateLimitInterval 0
+      $SystemLogRateLimitBurst 0
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Update rsyslog configuration (PROXMOX74 or UBUNTU, New style)
+  ansible.builtin.replace:
+    path: '/etc/rsyslog.conf'
+    regexp: '^module\(load="imuxsock"\)'
+    replace: 'module(load="imuxsock" SysSock.RateLimit.Interval="0" SysSock.RateLimit.Burst="0")'
+  become: yes
+  when: "'PROXMOX74' in ansible_facts['distribution'] or 'Ubuntu' in ansible_facts['distribution']"
+
+- name: Remove rsyslog backup file
+  ansible.builtin.file:
+    path: '/etc/rsyslog.conf.backup'
+    state: absent
+  become: yes
+
+- name: Restart rsyslog service 
+  systemd:
+    name: rsyslog
+    state: restarted
+
+- name: Create backup of original journald file
+  ansible.builtin.copy:
+    src: '/etc/systemd/journald.conf'
+    dest: '/etc/systemd/journald.conf.backup'
+  become: yes
+
+- name: Update journald configuration to disable rate limiting
+  ansible.builtin.replace:
+    path: '/etc/systemd/journald.conf'
+    regexp: '^#?RateLimit(Interval|Burst)=.*'
+    replace: 'RateLimit\1=0'
+  become: yes
+
+- name: Remove journald backup file
+  ansible.builtin.file:
+    path: '/etc/systemd/journald.conf.backup'
+    state: absent
+  become: yes
+
+- name: Restart journald service 
+  systemd:
+    name: systemd-journald
+    state: restarted
+
 - name: Execuite StorPool components post-installation hook
   become: yes
   ansible.builtin.shell: "{{ sp_post_install_components_hook }}"
